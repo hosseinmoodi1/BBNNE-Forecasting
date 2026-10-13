@@ -1,0 +1,16 @@
+# Core dependencies (updated for Python 3.14 compatibility)
+numpy>=2.3.2
+pandas>=2.3.3
+scipy>=1.16.1
+
+# Machine learning (scikit-learn >= 1.2 required for `estimator=` kwarg)
+scikit-learn>=1.7.2
+
+# Visualization
+matplotlib>=3.7
+
+# Testing
+pytest>=7.0
+
+# Optional: LSTM baseline
+# tensorflow>=2.13

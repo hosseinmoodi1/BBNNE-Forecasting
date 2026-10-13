@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bbnne"
+version = "0.1.0"
+description = "Bat-Based Neural Network Ensemble for stock price forecasting"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "scikit-learn>=1.2",
+    "matplotlib>=3.7",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["bbnne*"]
