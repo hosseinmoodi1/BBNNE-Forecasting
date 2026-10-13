@@ -32,6 +32,7 @@ with a shrinkage coefficient γ ∈ [0, 1].
 ## Repository Structure
 bbnne/
 ├── bbnne/ # Core library
+
 │ ├── init.py
 │ ├── model.py # BBNNE main model
 │ ├── ablation.py # Ablation-study variants
