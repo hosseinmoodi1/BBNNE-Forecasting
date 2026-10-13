@@ -34,32 +34,59 @@ bbnne/
 ├── bbnne/ # Core library
 
 │ ├── init.py
+
 │ ├── model.py # BBNNE main model
+
 │ ├── ablation.py # Ablation-study variants
+
 │ ├── rlsg.py # Relevant Lag Space Generation
+
 │ ├── bat_algorithm.py # Bat Algorithm optimizer
+
 │ ├── neural_network.py # MLP expert (single hidden layer)
+
 │ ├── features.py # Feature engineering (rich / raw_lags)
+
 │ ├── metrics.py # MAPE, MAE, RMSE, DA, Theil's U, R²
+
 │ ├── benchmarks.py # MLP, RBF, Bagging, AdaBoost, LSTM
+
 │ └── data_loader.py # Loaders for TSE and US equity CSVs
+
 ├── examples/ # Runnable scripts
+
 │ ├── run_pipeline.py # Main pipeline: experiments → tables → figures
+
 │ ├── run_ablation.py # Ablation study
+
 │ ├── run_stages.py # Multi-stage hyperparameter search
+
 │ ├── tune_parameters.py # Grid search over BBNNE hyperparameters
+
 │ └── generate_figures.py # Standalone figure generator
+
 ├── tests/
+
 │ └── test_components.py # Unit tests for all components
+
 ├── data/ # Benchmark datasets
+
 │ ├── SHPETRO.csv # Tehran Stock Exchange (TSE)
+
 │ ├── FEOLAD.csv # Tehran Stock Exchange (TSE)
+
 │ ├── DailyData_#IBM_2026-09-14.csv # NYSE
+
 │ └── DailyData_#MSFT_2026-09-14.csv # NASDAQ
+
 ├── results/ # Output directory (created at runtime)
+
 ├── pyproject.toml
+
 ├── requirements.txt
+
 ├── .gitignore
+
 └── README.md
 
 ---
