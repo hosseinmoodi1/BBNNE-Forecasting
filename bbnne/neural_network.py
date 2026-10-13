@@ -6,10 +6,24 @@ Activation
 - Hidden layer : log-sigmoid   f(z) = 1 / (1 + exp(-z))
 - Output layer : linear
 
-Weight optimization is delegated to `BatAlgorithm`.
+Weight optimization is delegated to one of two trainers:
+    - "bat" : Bat Algorithm (metaheuristic, default)
+    - "bp"  : Backpropagation via sklearn MLPRegressor (L-BFGS)
+
+The `trainer` argument is used by the ablation study to isolate the
+contribution of the Bat Algorithm from the rest of the framework.
+
+Note
+----
+The BP trainer may emit a ConvergenceWarning when L-BFGS reaches its
+iteration limit. This warning is suppressed here because it is
+informational only: the network still returns the best weights found,
+and the surrounding ensemble is unaffected. If higher precision is
+needed, increase `max_iter` in `fit()`.
 """
 from __future__ import annotations
 
+import warnings
 from typing import Dict, Optional
 
 import numpy as np
@@ -53,11 +67,11 @@ class MLPExpert:
         )
 
         # ---- Runtime attributes ----
-        # FIX #4: optimizer_history is defined here so that it is always
-        # accessible even if `fit()` is never called.
         self.weights: Optional[np.ndarray] = None
         self.train_mse: Optional[float] = None
         self.optimizer_history: Optional[Dict] = None
+        self.trainer_: str = "bat"
+        self._bp_model = None  # only set when trainer == "bp"
 
     # ------------------------------------------------------------------ #
     # Parameter packing / unpacking
@@ -91,6 +105,12 @@ class MLPExpert:
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Predict on new inputs (requires a trained model)."""
+        if self.trainer_ == "bp":
+            if self._bp_model is None:
+                raise RuntimeError(
+                    "MLPExpert (BP trainer) has not been trained yet."
+                )
+            return self._bp_model.predict(X)
         if self.weights is None:
             raise RuntimeError("MLPExpert has not been trained yet.")
         return self.forward(X, self.weights)
@@ -104,15 +124,66 @@ class MLPExpert:
         y: np.ndarray,
         bat_params: Optional[Dict] = None,
         verbose: bool = False,
+        trainer: str = "bat",
     ) -> "MLPExpert":
         """
-        Train network weights with the Bat Algorithm.
+        Train network weights.
 
-        The fitness function is Mean Squared Error (MSE) on the provided
-        training subset. MSE is the standard differentiable loss for
-        regression and is compatible with the gradient-free search
-        performed by the Bat Algorithm.
+        Parameters
+        ----------
+        X : np.ndarray of shape (N, n_input)
+        y : np.ndarray of shape (N,)
+        bat_params : dict, optional
+            Hyperparameters for the Bat Algorithm (only used when
+            trainer == "bat").
+        verbose : bool
+            If True, the Bat Algorithm prints progress.
+        trainer : {"bat", "bp"}
+            - "bat" : Bat Algorithm (default, as in the paper).
+            - "bp"  : Backpropagation via sklearn's MLPRegressor
+                      (L-BFGS solver). Used in the ablation study to
+                      isolate the contribution of the Bat Algorithm.
+
+        Returns
+        -------
+        self
         """
+        if trainer not in ("bat", "bp"):
+            raise ValueError(
+                f"trainer must be 'bat' or 'bp', got '{trainer}'."
+            )
+
+        # ------------------------------------------------------------ #
+        # Trainer: Backpropagation (L-BFGS)
+        # ------------------------------------------------------------ #
+        if trainer == "bp":
+            from sklearn.exceptions import ConvergenceWarning
+            from sklearn.neural_network import MLPRegressor
+
+            self._bp_model = MLPRegressor(
+                hidden_layer_sizes=(self.n_hidden,),
+                activation="logistic",      # log-sigmoid
+                solver="lbfgs",             # quasi-Newton
+                max_iter=2000,
+                tol=1e-6,
+                random_state=self.seed,
+            )
+            # The ConvergenceWarning emitted by sklearn when L-BFGS
+            # reaches the iteration limit is informational only: the
+            # model still returns the best weights found during
+            # optimisation, and the ensemble is unaffected. We suppress
+            # it here to keep the console output clean.
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore", category=ConvergenceWarning
+                )
+                self._bp_model.fit(X, y)
+            self.trainer_ = "bp"
+            return self
+
+        # ------------------------------------------------------------ #
+        # Trainer: Bat Algorithm (default)
+        # ------------------------------------------------------------ #
         if bat_params is None:
             bat_params = {}
 
@@ -129,5 +200,6 @@ class MLPExpert:
         best_w, best_fit = optimizer.optimize(fitness, verbose=verbose)
         self.weights = best_w
         self.train_mse = best_fit
-        self.optimizer_history = optimizer.history  # exposed for plotting
+        self.optimizer_history = optimizer.history
+        self.trainer_ = "bat"
         return self

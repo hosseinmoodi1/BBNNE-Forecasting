@@ -7,6 +7,12 @@ Stage 6 configuration (validated via cascade experiments):
     feature_mode = "raw_lags"
     N_SEEDS      = 5
 
+Note
+----
+The LSTM baseline is implemented in bbnne/benchmarks.py but is NOT
+included in the main pipeline, consistent with the manuscript.
+It is available as an optional extension for future work.
+
 HORIZON-AWARE THEIL'S U
 -----------------------
 Theil's U is now computed with a horizon-matched denominator. Both the
@@ -45,9 +51,8 @@ import matplotlib.pyplot as plt
 from bbnne import BBNNE, evaluate
 from bbnne.data_loader import load_tse_csv, load_us_csv, PAPER_WINDOWS
 from bbnne.benchmarks import (
-    fit_mlp, fit_rbf, fit_bagging, fit_adaboost, fit_lstm,
+    fit_mlp, fit_rbf, fit_bagging, fit_adaboost,
 )
-
 
 # ===================================================================== #
 # Configuration
@@ -82,7 +87,7 @@ SEED = 42
 
 DATASET_ORDER: List[str] = ["SHPETRO", "FOLAD", "IBM", "MSFT"]
 TABLES_MODELS: List[str] = ["BBNNE", "MLP", "RBF", "Bagging", "AdaBoost"]
-MODELS_ORDER: List[str] = TABLES_MODELS + ["LSTM"]
+MODELS_ORDER: List[str] = TABLES_MODELS  # kept for backward compatibility
 
 COLORS: Dict[str, str] = {
     "BBNNE":    "#C0392B",
@@ -92,7 +97,6 @@ COLORS: Dict[str, str] = {
     "AdaBoost": "#8E44AD",
     "LSTM":     "#16A085",
 }
-
 
 # ===================================================================== #
 # Utilities
@@ -105,7 +109,6 @@ def _default_results_dir() -> Path:
         p = p.parent
     return Path.cwd() / "results"
 
-
 def get_datasets(data_dir: Path):
     return {
         "SHPETRO": (data_dir / "SHPETRO.csv", load_tse_csv),
@@ -117,7 +120,6 @@ def get_datasets(data_dir: Path):
             data_dir / "DailyData_#MSFT_2026-09-14.csv", load_us_csv
         ),
     }
-
 
 # ===================================================================== #
 # Model runners
@@ -144,7 +146,6 @@ def run_bbnne(prices_train: np.ndarray,
         preds.append(m.predict(prices_test))
     return np.mean(preds, axis=0)
 
-
 def run_mlp(tr, te):
     return fit_mlp(
         tr, te, max_lag=MAX_LAG, hidden=BENCH_HIDDEN,
@@ -152,14 +153,12 @@ def run_mlp(tr, te):
         horizon=BBNNE_HORIZON, feature_mode=BBNNE_FEATURE_MODE,
     )
 
-
 def run_rbf(tr, te):
     return fit_rbf(
         tr, te, max_lag=MAX_LAG, n_centers=BENCH_HIDDEN,
         seed=SEED, shrinkage=BBNNE_SHRINKAGE,
         horizon=BBNNE_HORIZON, feature_mode=BBNNE_FEATURE_MODE,
     )
-
 
 def run_bagging(tr, te):
     return fit_bagging(
@@ -170,7 +169,6 @@ def run_bagging(tr, te):
         horizon=BBNNE_HORIZON, feature_mode=BBNNE_FEATURE_MODE,
     )
 
-
 def run_adaboost(tr, te):
     return fit_adaboost(
         tr, te, max_lag=MAX_LAG,
@@ -180,25 +178,13 @@ def run_adaboost(tr, te):
         horizon=BBNNE_HORIZON, feature_mode=BBNNE_FEATURE_MODE,
     )
 
-
-def run_lstm(tr, te):
-    return fit_lstm(
-        tr, te, max_lag=MAX_LAG, hidden=20, epochs=200,
-        patience=15, dropout=0.2, batch_size=32,
-        seed=SEED, shrinkage=BBNNE_SHRINKAGE,
-        horizon=BBNNE_HORIZON, feature_mode=BBNNE_FEATURE_MODE,
-    )
-
-
 MODEL_RUNNERS = {
     "BBNNE":    run_bbnne,
     "MLP":      run_mlp,
     "RBF":      run_rbf,
     "Bagging":  run_bagging,
     "AdaBoost": run_adaboost,
-    "LSTM":     run_lstm,
 }
-
 
 # ===================================================================== #
 # Wilcoxon signed-rank test
@@ -235,7 +221,6 @@ def _wilcoxon_z(proposed_err: np.ndarray,
     p = 2.0 * (1.0 - norm.cdf(abs(Z)))
     return w_plus, float(Z), float(p)
 
-
 def wilcoxon_comparison(results: Dict,
                         reference: str = "BBNNE") -> pd.DataFrame:
     if reference not in results:
@@ -266,7 +251,6 @@ def wilcoxon_comparison(results: Dict,
             [m for m in MODELS_ORDER if m in df["Model"].values]
         ).reset_index()
     return df
-
 
 # ===================================================================== #
 # Experiments (HORIZON-AWARE)
@@ -360,7 +344,6 @@ def run_experiment(dataset_name, filepath, loader, verbose=True):
     results["_persistence"] = {"metrics": baseline_metrics}
     return results
 
-
 def build_summary_table(all_results: Dict) -> pd.DataFrame:
     rows = []
     for dataset, res in all_results.items():
@@ -381,7 +364,6 @@ def build_summary_table(all_results: Dict) -> pd.DataFrame:
     )
     return df.sort_values(["Dataset", "Model"]).reset_index(drop=True).round(4)
 
-
 def _save_predictions(all_results: Dict, output_dir: Path) -> None:
     arrays = {}
     for ds, res in all_results.items():
@@ -394,7 +376,6 @@ def _save_predictions(all_results: Dict, output_dir: Path) -> None:
                 y_saved = True
             arrays[f"{ds}__{model}__y_pred"] = payload["y_pred"]
     np.savez(output_dir / "predictions.npz", **arrays)
-
 
 def stage_experiments(args):
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -460,7 +441,6 @@ def stage_experiments(args):
 
     print(f"\n  Saved: {args.output_dir}")
 
-
 # ===================================================================== #
 # Stage 2: LaTeX tables
 # ===================================================================== #
@@ -474,7 +454,6 @@ def _fmt(v, digits=3):
     if not np.isfinite(fv):
         return "--"
     return f"{fv:.{digits}f}"
-
 
 def build_table6(summary: pd.DataFrame) -> str:
     lines = [
@@ -516,7 +495,6 @@ def build_table6(summary: pd.DataFrame) -> str:
             lines.append(r"\midrule")
     lines += [r"\bottomrule", r"\end{tabular}", r"\end{table*}"]
     return "\n".join(lines)
-
 
 def build_table7(results_dir: Path) -> str:
     paths = [results_dir / f"table7_wilcoxon_{ds}.csv"
@@ -569,7 +547,6 @@ def build_table7(results_dir: Path) -> str:
     lines += [r"\bottomrule", r"\end{tabular}", r"\end{table*}"]
     return "\n".join(lines)
 
-
 def stage_tables(args):
     summary_path = args.output_dir / "table6_summary.csv"
     if not summary_path.exists():
@@ -597,7 +574,6 @@ def stage_tables(args):
     print(f"  Saved: {out_dir / 'table7.tex'}")
     print(f"  Saved: {out_dir / 'tables_combined.tex'}")
 
-
 # ===================================================================== #
 # Stage 3: Figures
 # ===================================================================== #
@@ -612,13 +588,11 @@ plt.rcParams.update({
     "savefig.bbox": "tight",
 })
 
-
 def _load_summary(results_dir: Path) -> pd.DataFrame:
     path = results_dir / "table6_summary.csv"
     if not path.exists():
         raise FileNotFoundError(f"Missing {path}.")
     return pd.read_csv(path)
-
 
 def fig1_mape_bars(summary, fig_dir):
     datasets = [ds for ds in DATASET_ORDER
@@ -655,7 +629,6 @@ def fig1_mape_bars(summary, fig_dir):
     plt.savefig(out); plt.close(fig)
     print(f"  Saved: {out.name}")
 
-
 def fig2_theilu_heatmap(summary, fig_dir):
     pivot = summary.pivot_table(
         index="Model", columns="Dataset", values="TheilU"
@@ -678,7 +651,6 @@ def fig2_theilu_heatmap(summary, fig_dir):
     out = fig_dir / "fig2_theilu_heatmap.png"
     plt.savefig(out); plt.close(fig)
     print(f"  Saved: {out.name}")
-
 
 def fig3_predictions(results_dir, fig_dir):
     cache = results_dir / "predictions.npz"
@@ -715,7 +687,6 @@ def fig3_predictions(results_dir, fig_dir):
     plt.savefig(out); plt.close(fig)
     print(f"  Saved: {out.name}")
 
-
 def fig4_radar(summary, fig_dir):
     pivot = summary.pivot_table(
         index="Model", columns="Dataset", values="MAPE(%)"
@@ -745,7 +716,6 @@ def fig4_radar(summary, fig_dir):
     out = fig_dir / "fig4_radar.png"
     plt.savefig(out); plt.close(fig)
     print(f"  Saved: {out.name}")
-
 
 def fig5_wilcoxon_z(results_dir, fig_dir):
     paths = [results_dir / f"table7_wilcoxon_{ds}.csv"
@@ -786,7 +756,6 @@ def fig5_wilcoxon_z(results_dir, fig_dir):
     plt.savefig(out); plt.close(fig)
     print(f"  Saved: {out.name}")
 
-
 def stage_figures(args):
     summary = _load_summary(args.output_dir)
     fig_dir = args.output_dir / "figures"
@@ -798,7 +767,6 @@ def stage_figures(args):
     fig4_radar(summary, fig_dir)
     fig5_wilcoxon_z(args.output_dir, fig_dir)
     print(f"\n  All figures saved to: {fig_dir}")
-
 
 # ===================================================================== #
 # CLI
@@ -816,7 +784,6 @@ def parse_args():
                    default="all")
     p.add_argument("--quiet", action="store_true")
     return p.parse_args()
-
 
 def main():
     args = parse_args()
@@ -851,7 +818,6 @@ def main():
         stage_tables(args)
     elif args.stage == "figures":
         stage_figures(args)
-
 
 if __name__ == "__main__":
     main()

@@ -1,9 +1,9 @@
 Dataset,Variant,Z,p-value,Full better?
 SHPETRO,BBNNE w/o RLSG,2.3285,0.0199,yes
-SHPETRO,BBNNE w/o Boosting,6.0217,0.0,yes
+SHPETRO,BBNNE w/o Bat,5.7588,0.0,yes
 FOLAD,BBNNE w/o RLSG,4.1424,0.0,yes
-FOLAD,BBNNE w/o Boosting,3.1171,0.0018,yes
+FOLAD,BBNNE w/o Bat,10.4858,0.0,yes
 IBM,BBNNE w/o RLSG,3.1612,0.0016,yes
-IBM,BBNNE w/o Boosting,0.0001,0.9998,tie/n.s.
+IBM,BBNNE w/o Bat,2.3544,0.0185,yes
 MSFT,BBNNE w/o RLSG,-0.9109,0.3623,tie/n.s.
-MSFT,BBNNE w/o Boosting,0.9664,0.3338,tie/n.s.
+MSFT,BBNNE w/o Bat,2.3913,0.0168,yes

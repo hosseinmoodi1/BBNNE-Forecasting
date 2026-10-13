@@ -1,14 +1,23 @@
 """
 Ablation study for BBNNE.
 
+Design
+------
+The APE-thresholded boosting mechanism is the CORE of BBNNE and is
+therefore kept ACTIVE in every variant. The ablation varies only the
+two remaining axes:
+
+    - RLSG   : feature-space diversity (diverse lag subspaces)
+    - Trainer: metaheuristic training (Bat) vs. gradient-based (BP)
+
 Variants
 --------
-"full"         : RLSG subspaces + boosting (complete BBNNE)
-"wo_rlsg"      : full feature matrix + boosting
-"wo_boosting"  : RLSG subspaces + uniform averaging
+"full"          : RLSG + Bat  + Boosting      (complete BBNNE)
+"wo_rlsg"       : full features + Bat + Boosting
+"wo_bat"        : RLSG + BP + Boosting
+"wo_rlsg_bat"   : full features + BP + Boosting  (optional)
 
-The boosting sample-weighting follows Algorithm 2 of the paper using
-APE on the price level with a dynamic, iteration-dependent threshold.
+Boosting is enabled in all four variants.
 """
 from __future__ import annotations
 
@@ -22,10 +31,16 @@ from .neural_network import MLPExpert
 from .rlsg import rlsg
 
 
-_VALID_VARIANTS = ("full", "wo_rlsg", "wo_boosting")
+_VALID_VARIANTS = ("full", "wo_rlsg", "wo_bat", "wo_rlsg_bat")
 
 
 class BBNNEAblation:
+    """
+    BBNNE with switchable RLSG and trainer, for the ablation study.
+
+    Boosting is always active.
+    """
+
     def __init__(
         self,
         n_experts: int = 7,
@@ -68,6 +83,12 @@ class BBNNEAblation:
                 f"got '{self.feature_mode}'."
             )
 
+        # ---- Ablation switches ----
+        # Boosting is ALWAYS active (core of BBNNE).
+        self.rlsg_enabled = self.variant in ("full", "wo_bat")
+        self.bat_enabled = self.variant in ("full", "wo_rlsg")
+        self.boosting_enabled = True
+
         self.rng = np.random.default_rng(self.sampling_seed)
 
         self.lag_spaces: Optional[List[List[int]]] = None
@@ -103,7 +124,8 @@ class BBNNEAblation:
     # Subspaces
     # ------------------------------------------------------------------ #
     def _generate_lag_spaces(self, X: np.ndarray, y: np.ndarray) -> None:
-        if self.variant in ("full", "wo_boosting"):
+        if self.rlsg_enabled:
+            # RLSG: each expert gets its own diverse subspace
             self.lag_spaces, _ = rlsg(
                 X, y,
                 n_spaces=self.n_experts,
@@ -111,7 +133,8 @@ class BBNNEAblation:
                 seed=self.seed,
             )
             self.input_dim_per_expert_ = self.subspace_size
-        elif self.variant == "wo_rlsg":
+        else:
+            # No RLSG: every expert uses the full feature matrix
             full = list(range(X.shape[1]))
             self.lag_spaces = [full[:] for _ in range(self.n_experts)]
             self.input_dim_per_expert_ = X.shape[1]
@@ -135,65 +158,70 @@ class BBNNEAblation:
 
         self._generate_lag_spaces(X, y)
 
-        use_boosting = (self.variant != "wo_boosting")
+        # Boosting is always active
+        use_boosting = self.boosting_enabled
+        effective_trainer = "bat" if self.bat_enabled else "bp"
 
         if verbose:
             print(f"[Variant] {self.variant_label()}")
             print(f"  n_experts={self.n_experts} | "
                   f"input_dim={self.input_dim_per_expert_} | "
+                  f"rlsg={self.rlsg_enabled} | "
+                  f"trainer={effective_trainer} | "
                   f"boosting={use_boosting} | N={N} | "
                   f"h={self.horizon} | mode={self.feature_mode}")
 
-        if use_boosting:
-            w = np.full(N, 1.0 / N, dtype=np.float64)
+        w = np.full(N, 1.0 / N, dtype=np.float64)
         self.experts = []
         self.beta_values = []
         self.phi_history = []
 
         for t in range(self.n_experts):
-            if use_boosting:
-                p = w / w.sum()
-                idx = self.rng.choice(N, size=N, replace=True, p=p)
-            else:
-                idx = self.rng.integers(0, N, size=N)
+            # ---- Sampling with boosting weights ----
+            p = w / w.sum()
+            idx = self.rng.choice(N, size=N, replace=True, p=p)
 
             X_sub = X[np.ix_(idx, self.lag_spaces[t])]
             y_sub = y[idx]
 
+            # ---- Train expert with the selected trainer ----
             expert = MLPExpert(
                 n_input=self.input_dim_per_expert_,
                 n_hidden=self.hidden_size,
                 seed=self.seed,
             )
             expert.fit(
-                X_sub, y_sub, bat_params=self.bat_params, verbose=False
+                X_sub, y_sub,
+                bat_params=self.bat_params,
+                verbose=False,
+                trainer=effective_trainer,
             )
             self.experts.append(expert)
 
-            if use_boosting:
-                y_pred_s = expert.predict(X[:, self.lag_spaces[t]])
-                y_pred_real = self.target_scaler_.inverse_transform(
-                    y_pred_s.reshape(-1, 1)
-                ).ravel()
+            # ---- Boosting weight update (APE on price level) ----
+            y_pred_s = expert.predict(X[:, self.lag_spaces[t]])
+            y_pred_real = self.target_scaler_.inverse_transform(
+                y_pred_s.reshape(-1, 1)
+            ).ravel()
 
-                # APE on price level (matches Algorithm 2 of the paper)
-                ape = np.abs(1.0 - np.exp(y_pred_real - targets))
+            # APE on price level (matches Algorithm 2 of the paper)
+            ape = np.abs(1.0 - np.exp(y_pred_real - targets))
 
-                phi_t = float(ape.mean())
-                self.phi_history.append(phi_t)
+            phi_t = float(ape.mean())
+            self.phi_history.append(phi_t)
 
-                epsilon_t = float(np.sum(p * (ape > phi_t)))
-                epsilon_t = float(
-                    np.clip(epsilon_t, 1e-6, 0.5 - 1e-6)
-                )
-                beta_t = epsilon_t / (1.0 - epsilon_t)
-                self.beta_values.append(beta_t)
+            epsilon_t = float(np.sum(p * (ape > phi_t)))
+            epsilon_t = float(np.clip(epsilon_t, 1e-6, 0.5 - 1e-6))
+            beta_t = epsilon_t / (1.0 - epsilon_t)
+            self.beta_values.append(beta_t)
 
-                update_mask = ape <= phi_t
-                w = np.where(update_mask, w * beta_t, w)
-                w = w / w.sum()
+            # Down-weight easy samples
+            update_mask = ape <= phi_t
+            w = np.where(update_mask, w * beta_t, w)
+            w = w / w.sum()
 
-        if use_boosting and len(self.beta_values) > 0:
+        # ---- Final expert weights (log(1/beta), normalised) ----
+        if len(self.beta_values) > 0:
             log_inv_beta = np.log(1.0 / np.array(self.beta_values))
             denom = log_inv_beta.sum()
             if denom <= 0:
@@ -238,7 +266,8 @@ class BBNNEAblation:
     # ------------------------------------------------------------------ #
     def variant_label(self) -> str:
         return {
-            "full":        "Full BBNNE",
-            "wo_rlsg":     "BBNNE w/o RLSG",
-            "wo_boosting": "BBNNE w/o Boosting",
+            "full":         "Full BBNNE",
+            "wo_rlsg":      "BBNNE w/o RLSG",
+            "wo_bat":       "BBNNE w/o Bat",
+            "wo_rlsg_bat":  "BBNNE w/o RLSG & Bat",
         }.get(self.variant, f"BBNNE [{self.variant}]")

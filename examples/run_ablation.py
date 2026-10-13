@@ -1,11 +1,20 @@
 """
 run_ablation.py — Ablation study for BBNNE (Stage-6 settings).
 
+Design
+------
+The APE-thresholded boosting mechanism is the core of BBNNE and is
+kept ACTIVE in every variant. The ablation varies only:
+
+    - RLSG    : on/off (feature-space diversity)
+    - Trainer : Bat vs. BP (metaheuristic vs. gradient-based)
+
 Variants
 --------
-Full BBNNE         : RLSG subspaces + Boosting
-BBNNE w/o RLSG     : full feature matrix + Boosting
-BBNNE w/o Boosting : RLSG subspaces + uniform averaging
+Full BBNNE         : RLSG + Bat + Boosting
+BBNNE w/o RLSG     : full features + Bat + Boosting
+BBNNE w/o Bat      : RLSG + BP  + Boosting
+BBNNE w/o RLSG & Bat : full features + BP + Boosting   (optional)
 
 Stage-6 configuration:
     shrinkage    = 0.5
@@ -75,16 +84,20 @@ SEED = 42
 
 DATASET_ORDER: List[str] = ["SHPETRO", "FOLAD", "IBM", "MSFT"]
 
+# ----- Ablation variants -----
+# To disable the optional 4th variant, comment out its line below.
 VARIANTS: Dict[str, str] = {
-    "Full BBNNE":         "full",
-    "BBNNE w/o RLSG":     "wo_rlsg",
-    "BBNNE w/o Boosting": "wo_boosting",
+    "Full BBNNE":           "full",
+    "BBNNE w/o RLSG":       "wo_rlsg",
+    "BBNNE w/o Bat":        "wo_bat",
+    # "BBNNE w/o RLSG & Bat": "wo_rlsg_bat",   # <-- optional
 }
 
 COLORS: Dict[str, str] = {
-    "Full BBNNE":         "#C0392B",
-    "BBNNE w/o RLSG":     "#2980B9",
-    "BBNNE w/o Boosting": "#F39C12",
+    "Full BBNNE":           "#C0392B",
+    "BBNNE w/o RLSG":       "#2980B9",
+    "BBNNE w/o Bat":        "#27AE60",
+    "BBNNE w/o RLSG & Bat": "#8E44AD",
 }
 
 
@@ -193,7 +206,6 @@ def run_dataset(dataset_name, filepath, loader, verbose=True):
         y_pred = y_pred_all[:n]
         y_t = y_true_aligned[:n]
 
-        # Horizon-aware Theil's U
         metrics = evaluate(y_t, y_pred, horizon=h)
         metrics["time_sec"] = round(elapsed, 2)
 
@@ -344,14 +356,14 @@ def build_latex_ablation_table(df: pd.DataFrame,
     caption = (
         r"Ablation study on the contribution of each component in the "
         r"BBNNE framework (horizon $h=3$, raw-lag inputs). "
-        r"``Full BBNNE'' uses both RLSG feature subspaces and "
-        r"error-driven instance re-weighting (boosting). "
+        r"The APE-thresholded boosting mechanism is the core of BBNNE "
+        r"and is kept active in every variant. The ablation varies "
+        r"only the RLSG feature-space generator and the trainer "
+        r"(Bat Algorithm vs.\ gradient-based backpropagation). "
         r"Theil's $U$ is computed with a horizon-matched denominator. "
         r"The column ``Full better?'' reports the paired Wilcoxon "
-        r"signed-rank test between Full BBNNE and each variant "
-        r"(positive $Z$ indicates the variant has systematically "
-        r"larger errors); ``n.s.'' stands for not significant at "
-        r"$p = 0.05$."
+        r"signed-rank test between Full BBNNE and each variant; "
+        r"``n.s.'' stands for not significant at $p = 0.05$."
     )
 
     lines = [
